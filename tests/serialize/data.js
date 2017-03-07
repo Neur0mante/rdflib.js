@@ -13,7 +13,6 @@ var fetcher = $rdf.fetcher(kb)
 
 var contentType = 'text/turtle'
 var base = 'file://' + process.cwd() + '/'
-var uri
 var targetDocument = $rdf.sym(base + 'stdin') // defaul URI of test data
 
 var check = function (ok, message, status) {
@@ -78,8 +77,10 @@ var doNext = function (remaining) {
         break
 
       case '-in':
+      console.log(base);
         targetDocument = $rdf.sym($rdf.uri.join(right, base))
         // console.log("Document is " + targetDocument)
+        console.log(targetDocument.value);
         fetcher.nowOrWhenFetched(targetDocument, {}, function (ok, body, xhr) {
           check(ok, body, xhr ? xhr.status : undefined)
           console.log('Loaded  ' + targetDocument)
@@ -99,7 +100,7 @@ var doNext = function (remaining) {
             return
           }
           doc = $rdf.sym($rdf.uri.join(right, base))
-          if (doc.uri.slice(0, 8) !== 'file:///') {
+          if (doc.uri.slice(0, 7) !== 'file://') {
             exitMessage('Can only write files just now, sorry: ' + doc.uri)
           }
           var fileName = doc.uri.slice(7) //
@@ -119,7 +120,7 @@ var doNext = function (remaining) {
             } catch(e) {
               exitMessage('Error in serializer: ' + e + stackString(e))
             }
-            if (doc.uri.slice(0, 8) !== 'file:///') {
+            if (doc.uri.slice(0, 7) !== 'file://') {
               exitMessage('Can only write files just now, sorry: ' + doc.uri)
             }
             var fileName = doc.uri.slice(7) //

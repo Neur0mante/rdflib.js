@@ -871,7 +871,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
 
   /** Requests a document URI and arranges to load the document.
    ** Parameters:
-   **	    term:  term for the thing whose URI is to be dereferenced
+   **	    @param{term}:  term for the thing whose URI is to be dereferenced
    **      rterm:  the resource which refered to this (for tracking bad links)
    **      options:
    **              force:  Load the data even if loaded before
@@ -986,7 +986,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
     }
 
     var onerrorFactory = function (xhr) {
-      return function (event) {
+      return function () {
         xhr.onErrorWasCalled = true // debugging and may need it
         if (typeof document !== 'undefined') { // Mashup situation, not node etc
           if (Fetcher.crossSiteProxyTemplate && document.location && !xhr.proxyUsed) {

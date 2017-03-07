@@ -423,7 +423,7 @@ var Serializer = function () {
       var roots = stats.roots
       var results = []
       for (var i = 0; i < roots.length; i++) {
-        var root = roots[i]
+        let root = roots[i]
         results.push(subjectTree(root, stats))
       }
       return results
@@ -504,7 +504,7 @@ var Serializer = function () {
     __Serializer.prototype.termToN3 = termToN3
     termToN3 = termToN3.bind(this)
 
-    function prefixDirectives () {
+    function prefixDirective () {
       var str = ''
       if (this.defaultNamespace)
         str += '@prefix : <' + this.defaultNamespace + '>.\n'
@@ -516,7 +516,7 @@ var Serializer = function () {
       }
       return str + '\n'
     }
-    var prefixDirectives = prefixDirectives.bind(this)
+    var prefixDirectives = prefixDirective.bind(this)
 
     // Body of statementsToN3:
 
@@ -788,7 +788,7 @@ var Serializer = function () {
       var roots = stats.roots
       var results = []
       for (var i = 0; i < roots.length; i++) {
-        root = roots[i]
+        let root = roots[i]
         results.push(subjectXMLTree(root, stats))
       }
       return results

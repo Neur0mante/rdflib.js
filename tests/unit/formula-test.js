@@ -11,7 +11,7 @@ describe('Formula', () => {
   it('can be constructed and serialized', () => {
     ;[
       {
-        s: new  NamedNode('http://example.com/btb'),
+        s: new NamedNode('http://example.com/btb'),
         p: new NamedNode('http://xmlns.com/foaf/0.1/name'),
         o: 'Builder',
         expected: '{<http://example.com/btb> <http://xmlns.com/foaf/0.1/name> "Builder" .}'

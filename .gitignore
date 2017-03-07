@@ -1,7 +1,11 @@
 parsers/*.js
 node_modules
-npm-debug.log
+npm-debug.log*
 dist/rdflib.min.js
-lib/
+.vscode
+.gitignore
 .jsbeautifyrc
-/.vscode
+.eslintrc
+/lib/*
+!/lib/index*
+/tests/**/,*

@@ -48,7 +48,6 @@ function serialize (target, kb, base, contentType, callback) {
         return executeCallback(null, documentString)
         // n3String = sz.statementsToN3(newSts)
         // documentString = convert.convertToNQuads(n3String, callback)
-        break
       default:
         throw new Error('Serialize: Content-type ' + contentType + ' not supported for data write.')
     }
