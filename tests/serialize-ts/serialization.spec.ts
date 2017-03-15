@@ -131,7 +131,7 @@ describe("Testing the consistency of serialization between the various parsers",
         it("Should load t5.n3 and write t5.ttl, equivalent to t5-ref.ttl", function (done) {
             testHelper.loadFile("t5.n3").should.eventually.be.fulfilled
                 .then(() => {
-                    let lit = new $rdf.Literal(testHelper.base + "t5.n3")
+                    let lit = $rdf.literal(testHelper.base + "t5.n3")
                     // let pred = $rdf.sym("https://example.net/67890#bar");
                     testHelper.kb.statementsMatching(undefined, undefined, lit).should.not.be.undefined
                     return testHelper.outputFile(",t5.ttl", "text/turtle")
@@ -157,7 +157,7 @@ describe("Testing the consistency of serialization between the various parsers",
         it("Should load t5.n3 and write t6.n3, equivalent to t6-ref.n3", function (done) {
             testHelper.loadFile("t5.n3").should.eventually.be.fulfilled
                 .then(() => {
-                    let lit = new $rdf.Literal(testHelper.base + "t5.n3")
+                    let lit = $rdf.literal(testHelper.base + "t5.n3")
                     testHelper.kb.statementsMatching(undefined, undefined, lit).should.not.be.undefined
                     return testHelper.outputFile(",t6.n3", "text/n3")
                 })
@@ -182,7 +182,7 @@ describe("Testing the consistency of serialization between the various parsers",
         it("Should load t7.n3 and write t7.nt, equivalent to t7-ref.nt", function (done) {
             testHelper.loadFile("t7.n3").should.eventually.be.fulfilled
                 .then(() => {
-                    let lit = new $rdf.Literal(testHelper.base + "t7.n3")
+                    let lit = $rdf.literal(testHelper.base + "t7.n3")
                     testHelper.kb.statementsMatching(undefined, undefined, lit).should.not.be.undefined
                     return testHelper.outputFile(",t7.nt", "application/n-triples")
                 })
@@ -210,7 +210,7 @@ describe("Testing the consistency of serialization between the various parsers",
         it("Should load t5.n3 and write t8.nq, equivalent to t8-ref.nq", function (done) {
             testHelper.loadFile("t5.n3").should.eventually.be.fulfilled
                 .then(() => {
-                    let lit = new $rdf.Literal(testHelper.base + "t5.n3")
+                    let lit = $rdf.literal(testHelper.base + "t5.n3")
                     testHelper.kb.statementsMatching(undefined, undefined, lit).should.not.be.undefined
                     return testHelper.outputFile(",t8.nq", "application/n-quads")
                 })

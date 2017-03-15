@@ -7,5 +7,6 @@ dist/rdflib.min.js
 .jsbeautifyrc
 .eslintrc
 /lib/*
-!/lib/index*
+!/lib/index.*
 /tests/**/,*
+dist/
