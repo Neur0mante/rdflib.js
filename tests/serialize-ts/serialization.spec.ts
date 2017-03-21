@@ -198,7 +198,7 @@ describe("Testing the consistency of serialization between the various parsers",
   // As mentioned in the makefile the n-quad includes the time of insertion
   // of the data so it cant be reporduced. Also it is not guaranteed the collision
   // on the names of the blank nodes.
-  describe.only("n3 to n-quads", () => {
+  describe.skip("n3 to n-quads", () => {
     // t8:
     // node ./data.js -in=t5.n3  -format=application/n-quads -dump=,t8.nq
     // diff ,t8.nq t8-ref.nq
