@@ -1,4 +1,4 @@
-import TestHelper from './test-helper';
+import { TestHelper } from './test-helper';
 
 let helper = new TestHelper()
 

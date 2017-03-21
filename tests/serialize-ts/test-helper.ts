@@ -1,5 +1,6 @@
 
 import  $rdf  from '../../lib'
+import  fetcher  from '../../lib'
 import * as fs from 'fs'
 import * as Promise from 'bluebird'
 
@@ -11,10 +12,10 @@ export type MIME = "application/rdf+xml" | "text/turtle" | "text/n3" | "applicat
  * @export
  * @class TestHelper
  */
-export default class TestHelper {
+export class TestHelper {
     testFolder: string
     kb
-    fetcher
+    fetcher:fetcher
     contentType
     base: string
     targetDocument
