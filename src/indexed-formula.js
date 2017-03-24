@@ -73,10 +73,10 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     this.redirections = [] // redirect to lexically smaller equivalent symbol
     this.aliases = [] // reverse mapping to redirection: aliases for this
     this.HTTPRedirects = [] // redirections we got from HTTP
-    this.subjectIndex = [] // Array of statements with this X as subject
-    this.predicateIndex = [] // Array of statements with this X as subject
-    this.objectIndex = [] // Array of statements with this X as object
-    this.whyIndex = [] // Array of statements with X as provenance
+    this.subjectIndex = new Map() // Array of statements with this X as subject
+    this.predicateIndex = new Map() // Array of statements with this X as subject
+    this.objectIndex = new Map() // Array of statements with this X as object
+    this.whyIndex = new Map() // Array of statements with X as provenance
     this.index = [
       this.subjectIndex,
       this.predicateIndex,
@@ -282,15 +282,15 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     // Don't put it in the store
     // still return this statement for owl:sameAs input
     var hash = [ this.canon(subj).hashString(), predHash,
-      this.canon(obj).hashString(), this.canon(why).hashString()]
+      this.canon(obj).hashString(), this.canon(why).hashString() ]
     st = new Statement(subj, pred, obj, why)
     for (i = 0; i < 4; i++) {
       var ix = this.index[i]
       var h = hash[i]
-      if (!ix[h]) {
-        ix[h] = []
+      if (!ix.has(h)) {
+        ix.set(h, [])
       }
-      ix[h].push(st) // Set of things with this as subject, etc
+      ix.get(h).push(st) // Set of things with this as subject, etc
     }
 
     // log.debug("ADDING    {"+subj+" "+pred+" "+obj+"} "+why)
@@ -348,10 +348,8 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     this.checkStatementList(this.statements)
     for (var p = 0; p < 4; p++) {
       var ix = this.index[p]
-      for (var key in ix) {
-        if (ix.hasOwnProperty(key)) {
-          this.checkStatementList(ix[key], p)
-        }
+      for (let key of ix.keys()) {
+        this.checkStatementList(ix.get(key), p)
       }
     }
   }
@@ -361,7 +359,7 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
    * Is each statement properly indexed?
    */
   checkStatementList (sts, from) {
-    var names = ['subject', 'predicate', 'object', 'why']
+    var names = [ 'subject', 'predicate', 'object', 'why' ]
     var origin = ' found in ' + names[from] + ' index.'
     var st
     for (var j = 0; j < sts.length; j++) {
@@ -380,10 +378,10 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
       for (var p = 0; p < 4; p++) {
         var c = this.canon(term[p])
         var h = c.hashString()
-        if (!this.index[p][h]) {
+        if (!this.index[p].get(h)) {
           // throw new Error('No ' + name[p] + ' index for statement ' + st + '@' + st.why + origin)
         } else {
-          if (!arrayContains(this.index[p][h], st)) {
+          if (!arrayContains(this.index[p].get(h), st)) {
             // throw new Error('Index for ' + name[p] + ' does not have statement ' + st + '@' + st.why + origin)
           }
         }
@@ -492,9 +490,9 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
    */
   mentionsURI (uri) {
     var hash = '<' + uri + '>'
-    return (!!this.subjectIndex[hash] ||
-    !!this.objectIndex[hash] ||
-    !!this.predicateIndex[hash])
+    return (!!this.subjectIndex.get(hash) ||
+      !!this.objectIndex.get(hash) ||
+      !!this.predicateIndex.get(hash))
   }
 
   // Existentials are BNodes - something exists without naming
@@ -617,10 +615,10 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     for (var p = 0; p < 4; p++) {
       var c = this.canon(term[p])
       var h = c.hashString()
-      if (!this.index[p][h]) {
+      if (!this.index[p].has(h)) {
         // log.warn ("Statement removal: no index '+p+': "+st)
       } else {
-        RDFArrayRemove(this.index[p][h], st)
+        RDFArrayRemove(this.index[p].get(h), st)
       }
     }
     RDFArrayRemove(this.statements, st)
@@ -642,17 +640,30 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     var oldhash = big.hashString()
     var newhash = small.hashString()
     var moveIndex = function (ix) {
-      var oldlist = ix[oldhash]
+      var oldlist = ix.get(oldhash)
       if (!oldlist) {
         return // none to move
       }
-      var newlist = ix[newhash]
+      var newlist = ix.get(newhash)
       if (!newlist) {
-        ix[newhash] = oldlist
+        ix.set(newhash, oldlist)
       } else {
-        ix[newhash] = oldlist.concat(newlist)
+        ix.set(newhash, oldlist.concat(newlist))
       }
-      delete ix[oldhash]
+      ix.delete(oldhash)
+    }
+    var updateActions = function (actions) {
+      var oldlist = actions[oldhash]
+      if (!oldlist) {
+        return // none to move
+      }
+      var newlist = actions[newhash]
+      if (!newlist) {
+        actions[newhash] = oldlist
+      } else {
+        actions[newhash] = oldlist.concat(newlist)
+      }
+      delete actions[oldhash]
     }
     // the canonical one carries all the indexes
     for (var i = 0; i < 4; i++) {
@@ -677,8 +688,8 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
         this.fetcher.nowKnownAs(big, small)
       }
     }
-    moveIndex(this.classActions)
-    moveIndex(this.propertyActions)
+    updateActions(this.classActions)
+    updateActions(this.propertyActions)
     // log.debug("Equate done. "+big+" to be known as "+small)
     return true // true means the statement does not need to be put in
   }
@@ -748,7 +759,7 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     }
     if (given.length === 1) { // Easy too, we have an index for that
       p = given[0]
-      list = this.index[p][hash[p]]
+      list = this.index[p].get(hash[p])
       if (list && justOne) {
         if (list.length > 1) {
           list = list.slice(0, 1)
@@ -765,7 +776,7 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     var i
     for (i = 0; i < given.length; i++) {
       p = given[i] // Which part we are dealing with
-      list = this.index[p][hash[p]]
+      list = this.index[p].get(hash[p])
       if (!list) {
         return [] // No occurrences
       }
@@ -776,7 +787,7 @@ export default class IndexedFormula extends Formula { // IN future - allow pass 
     }
     // Ok, we have picked the shortest index but now we have to filter it
     var best_p = given[best_i]
-    var possibles = this.index[best_p][hash[best_p]]
+    var possibles = this.index[best_p].get(hash[best_p])
     var check = given.slice(0, best_i).concat(given.slice(best_i + 1)) // remove best_i
     var results = []
     var parts = [ 'subject', 'predicate', 'object', 'why' ]

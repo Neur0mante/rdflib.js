@@ -313,7 +313,7 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
         if (f.redirections[t.hashString()]) {
           t = f.redirections[t.hashString()] // redirect
         }
-        termIndex = ind[i][t.hashString()]
+        termIndex = ind[i].get(t.hashString())
 
         if (!termIndex) {
           item.index = []
