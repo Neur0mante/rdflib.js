@@ -43,6 +43,7 @@
     "chai": "^3.5.0",
     "diff": "^3.2.0",
     "eslint": "^3.18.0",
+    "eslint-plugin-mocha": "^4.9.0",
     "eslint-plugin-promise": "^3.5.0",
     "eslint-plugin-standard": "^2.1.1",
     "fs-grep": "^0.0.5",
@@ -54,8 +55,10 @@
   "scripts": {
     "test": "npm run test:unit && npm run test:serialize",
     "test:unit": "mocha --growl --require babel-register tests/unit/**-test.js",
+    "test:speed": "mocha --growl --require babel-register --timeout 40000 -s 0 tests/performance/**.spec.js",
     "test:unit:dev": "mocha --watch --growl --require babel-register tests/unit/**-test.js",
     "test:serialize": "npm run lib  && npm run serialize-tests && npm run cleantest",
+
     "dist": "mkdirp dist",
     "dist/rdflib.js": "browserify -r ./src/index.js:rdflib --exclude 'xmlhttprequest' --standalone '$rdf' -t [ babelify --presets [ es2015 ] ] -o dist/rdflib.js",
     "dist/rdflib.min.js": "browserify -r ./src/index.js:rdflib --exclude 'xmlhttprequest' --standalone '$$rdf' -d -t [ babelify --presets [ es2015 ] ] -p [ minifyify --no-map --uglify [ --compress [ --dead_code --conditionals --unused --if_return ] --mangle --screw-ie8 ] ] -o dist/rdflib.min.js",
