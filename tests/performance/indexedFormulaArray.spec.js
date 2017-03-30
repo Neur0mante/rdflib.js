@@ -1,21 +1,19 @@
 /* eslint-env mocha */
 import { expect } from 'chai'
-import IndexedFormula from '../../src/indexed-formula'
+import IndexedFormula from '../../src/indexed-formula-array'
 import Fetcher from '../../lib/fetcher'
 import NamedNode from '../../lib/named-node'
-// import Promise from 'bluebird'
 import Literal from '../../lib/literal'
 
-describe.only('Loading on loki', () => {
+describe('Loading on arrays', () => {
   it('Fetching and loading will take ', (done) => {
     let kb = new IndexedFormula()
-    let fetcher = new Fetcher(kb, 20000)
+    let fetcher = new Fetcher(kb, 30000)
     fetcher.load('file://D:/programming/Q2005.ttl')
       .then(() => {
-        kb.index()
         done()
-        describe('queue in loki', () => {
-          it('Loki queue will take', (donz) => {
+        describe('queue in arrays', () => {
+          it('Array queue will take', (donz) => {
             let a = []
             let n
             let q

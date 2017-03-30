@@ -6,8 +6,9 @@ import Literal from '../../src/literal'
 import NamedNode from '../../src/named-node'
 import Namespace from '../../src/namespace'
 import Formula from '../../src/formula'
+// import Formula from '../../src/formula-with-loki'
 
-describe('Formula', () => {
+describe.skip('Formula', () => {
   it('can be constructed and serialized', () => {
     ;[
       {

@@ -13,7 +13,7 @@ describe('Parse', () => {
         let store = graph()
         let content = '<http://www.wikidata.org/entity/Q328> <http://www.w3.org/2000/01/rdf-schema#label> "ангельская Вікіпэдыя"@be-x-old .'
         parse(content, store, base, mimeType)
-        expect(store.statements[0].object.lang).to.eql('be-x-old')
+        expect(store.getStatements()[0].object.lang).to.eql('be-x-old')
       })
     })
   })
