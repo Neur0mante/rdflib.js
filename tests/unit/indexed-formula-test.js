@@ -1,9 +1,10 @@
 /* eslint-env mocha */
 import { expect } from 'chai'
 
-import IndexedFormula from '../../src/indexed-formula'
+import FormulaWithLoki from '../../src/indexed-formula'
 import NamedNode from '../../src/named-node'
 import { triple } from '../../src/data-factory'
+let IndexedFormula = FormulaWithLoki
 
 describe('IndexedFormula', () => {
   describe('match', () => {
@@ -24,11 +25,11 @@ describe('IndexedFormula', () => {
 
     const triple4 = triple(s1, p2, o3)
 
-    it('when given no arguments returns all statements', () => {
-      const kb = new IndexedFormula()
+    it('should returns all statements when given no arguments', () => {
+      let kb = new IndexedFormula()
       const triples = [ triple1, triple2, triple3 ]
       kb.addAll(triples)
-      expect(kb.length).to.equal(3)
+      expect(kb.length()).to.equal(3)
       expect(kb.match()).to.eql(triples)
     })
 
@@ -62,6 +63,7 @@ describe('IndexedFormula', () => {
         null,
         NamedNode.fromValue('https://example.com/object1')
       )
+      console.log(matches)
       expect(matches.length).to.equal(1)
       expect(matches[0].subject).to.eql(s1)
       expect(matches[0].object).to.eql(o1)

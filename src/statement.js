@@ -1,12 +1,13 @@
 'use strict'
 const Node = require('./node')
+const DefaultGraph = require('./default-graph')
 
 class Statement {
   constructor (subject, predicate, object, graph) {
     this.subject = Node.fromValue(subject)
     this.predicate = Node.fromValue(predicate)
     this.object = Node.fromValue(object)
-    this.why = graph  // property currently used by rdflib
+    this.why = graph || new DefaultGraph()  // property currently used by rdflib
   }
   get graph () {
     return this.why
@@ -34,13 +35,13 @@ class Statement {
       this.object.toCanonical()
     ]
     if (this.graph && this.graph.termType !== 'DefaultGraph') {
-        terms.push(this.graph.toCanonical())
+      terms.push(this.graph.toCanonical())
     }
     return terms.join(' ') + ' .'
   }
   toNT () {
-    return [this.subject.toNT(), this.predicate.toNT(),
-      this.object.toNT()].join(' ') + ' .'
+    return [ this.subject.toNT(), this.predicate.toNT(),
+      this.object.toNT() ].join(' ') + ' .'
   }
   toString () {
     return this.toNT()

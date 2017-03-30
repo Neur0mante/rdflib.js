@@ -30,11 +30,15 @@
   "dependencies": {
     "async": "^0.9.x",
     "jsonld": "^0.4.5",
+    "lokijs": "^1.4.3",
+    "mongodb": "^2.2.25",
     "n3": "^0.4.1",
+    "typescript": "^2.2.2",
     "xmldom": "^0.1.22",
     "xmlhttprequest": "^1.7.0"
   },
   "devDependencies": {
+    "@types/lokijs": "^1.2.30",
     "babel-cli": "^6.11.4",
     "babel-preset-es2015": "^6.9.0",
     "babel-register": "^6.18.0",
@@ -58,7 +62,6 @@
     "test:speed": "mocha --growl --require babel-register --timeout 40000 -s 0 tests/performance/**.spec.js",
     "test:unit:dev": "mocha --watch --growl --require babel-register tests/unit/**-test.js",
     "test:serialize": "npm run lib  && npm run serialize-tests && npm run cleantest",
-
     "dist": "mkdirp dist",
     "dist/rdflib.js": "browserify -r ./src/index.js:rdflib --exclude 'xmlhttprequest' --standalone '$rdf' -t [ babelify --presets [ es2015 ] ] -o dist/rdflib.js",
     "dist/rdflib.min.js": "browserify -r ./src/index.js:rdflib --exclude 'xmlhttprequest' --standalone '$$rdf' -d -t [ babelify --presets [ es2015 ] ] -p [ minifyify --no-map --uglify [ --compress [ --dead_code --conditionals --unused --if_return ] --mangle --screw-ie8 ] ] -o dist/rdflib.min.js",

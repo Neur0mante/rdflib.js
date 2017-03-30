@@ -10,10 +10,12 @@ const Serializer = require('./serialize')
 const Statement = require('./statement')
 const Variable = require('./variable')
 const ArrayIndexOf = require('./util').ArrayIndexOf
+const RDFArrayRemove = require('./util').RDFArrayRemove
 const Loki = require('lokijs')
 
 const owl_ns = 'http://www.w3.org/2002/07/owl#'
 let termsMap = [ 'subject', 'predicate', 'object', 'graph', 'statement' ]
+
 // INDEXED_FORMULA functions
 // Handle Functional Property
 function handle_FP (formula, subj, pred, obj) {
@@ -57,9 +59,7 @@ class FormulaWithLoki extends Node {
     super()
     this.termType = FormulaWithLoki.termType
     /** @private */
-    let rn = Math.floor(Math.random() * 100000)
-    this.dbname = 'formula' + rn + '.json'
-    this.db = new Loki(this.dbname)
+    this.db = new Loki('formula.json')
     /** @private */
     this.statements = this.db.addCollection('statements')
     this.statements.ensureIndex('subject')
@@ -100,11 +100,6 @@ class FormulaWithLoki extends Node {
     return this.addStatement(st)
   }
 
-  index () {
-    this.statements.ensureIndex('subject', true)
-    this.statements.ensureIndex('predicate', true)
-    this.statements.ensureIndex('object', true)
-  }
   /**
    * Add a statement object to the formula.
    * @public
@@ -115,14 +110,7 @@ class FormulaWithLoki extends Node {
    */
   addStatement (st) {
     // NOTE: DataContainerManipulator
-    let entry = {
-      subject: st.subject.toCanonical(),
-      predicate: st.predicate.toCanonical(),
-      object: st.object.toCanonical(),
-      graph: st.why.toCanonical(),
-      statement: st
-    }
-    return this.statements.insert(entry)
+    return this.statements.insert({ subject: st.subject.toCanonical, predicate: st.predicate.toCanonical, object: st.object.toCanonical, graph: st.why.toCanonical, statement: st })
   }
 
   /**
@@ -189,8 +177,7 @@ class FormulaWithLoki extends Node {
     return new Collection()
   }
 
-  getStatements () {
-    // NOTE: DataContainerManipulator
+  statements () {
     return this.statements.mapReduce((st) => {
       return st.statement
     }, (array) => {
@@ -223,33 +210,29 @@ class FormulaWithLoki extends Node {
     var list
     var query = {}
     for (let p = 0; p < 4; p++) {
-      pattern[p] = this.canon(Node.fromValue(pat[p]))
-      if (!pattern[p]) {
-      } else {
+      pattern[p] = Node.fromValue(pat[p])
+      if (pattern[p]) {
+        query[termsMap[p]] = pattern[p]
         given.push(p)
       }
     }
+
     if (given.length === 0) {
-      return this.getStatements()
-    } else
-    if (given.length === 1) { // Easy too, we have an index for that
-      let p = given[0]
-      query[termsMap[p]] = pattern[p].toCanonical()
-    } else {
-      let q = []
-      for (let p = 0; p < 4; p++) {
-        if (pattern[p]) {
-          let t = {}
-          t[termsMap[p]] = pattern[p].toCanonical()
-          q.push(t)
+      return this.statements.mapReduce((st) => {
+        return st.statement
+      }, (array) => {
+        var sts = []
+        for (let w of array) {
+          sts.push(w)
         }
-      }
-      query = {'$and': q}
+        return sts
+      })
     }
+
     list = this.statements
       .chain()
       .find(query, justOne)
-      .mapReduce(
+      .map(
       (st) => {
         return st.statement
       },
@@ -261,6 +244,7 @@ class FormulaWithLoki extends Node {
         return sts
       }
       )
+
     list = list || []
     return list
   }
@@ -1014,9 +998,8 @@ class FormulaWithLoki extends Node {
  *    ```
  * @return {Number}
  */
-  length () {
-    // NOTE: DataContainerManipulator
-    return this.statements.count()
+  get length () {
+    return this.statements.count
   }
 
   /**
@@ -1105,8 +1088,8 @@ class FormulaWithLoki extends Node {
    */
   remove (st) {
     if (st instanceof Array) {
-      for (let stat of st) {
-        this.remove(stat)
+      for (var i = 0; i < st.length; i++) {
+        this.remove(st[i])
       }
       return this
     }
@@ -1163,19 +1146,24 @@ class FormulaWithLoki extends Node {
    *    Otherwise, you should use remove() above.
    */
   removeStatement (st) {
-    // NOTE: DataContainerManipulator
+    // log.debug("entering remove w/ st=" + st)
     var term = [ st.subject, st.predicate, st.object, st.why ]
-    let statDoc
     for (var p = 0; p < 4; p++) {
-      statDoc[termsMap[p]] = this.canon(term[p])
+      var c = this.canon(term[p])
+      var h = c.hashString()
+      if (!this.index[p].has(h)) {
+        // log.warn ("Statement removal: no index '+p+': "+st)
+      } else {
+        RDFArrayRemove(this.index[p].get(h), st)
+      }
     }
-    this.statements.remove(statDoc)
+    RDFArrayRemove(this.statements, st)
     return this
   }
 
   removeStatements (sts) {
-    for (let st of sts) {
-      this.removeStatement(st)
+    for (var i = 0; i < sts.length; i++) {
+      this.remove(sts[i])
     }
     return this
   }

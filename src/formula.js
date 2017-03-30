@@ -270,7 +270,7 @@ class Formula extends Node {
   // doc param may be null to search all documents in store
   connectedStatements (subject, doc, excludePredicateURIs) {
     excludePredicateURIs = excludePredicateURIs || []
-    var todo = [subject]
+    var todo = [ subject ]
     var done = []
     var doneArcs = []
     var result = []

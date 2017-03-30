@@ -15,7 +15,6 @@
 // Compare with BlankNode.  They are similar, but a variable
 // stands for something whose value is to be returned.
 // Also, users name variables and want the same name back when stuff is printed
-/* jsl:option explicit*/ // Turn on JavaScriptLint variable declaration checking
 
 import IndexedFormula from './indexed-formula'
 const log = require('./log')
@@ -42,10 +41,10 @@ class Query {
  * currently not in the kb. The fetcher function needs to be defined manualy and
  * should call $rdf.Util.AJAR_handleNewTerm to process the requested resource.
  *
- * @param	myQuery,	a knowledgebase containing a pattern to use as query
- * @param	callback, 	whenever the pattern in myQuery is met this is called with
- * 						the new bindings as parameter
- * @param	fetcher,	whenever a resource needs to be loaded this gets called  IGNORED OBSOLETE
+ * @param myQuery, a knowledgebase containing a pattern to use as query
+ * @param callback,  whenever the pattern in myQuery is met this is called with
+ *       the new bindings as parameter
+ * @param fetcher, whenever a resource needs to be loaded this gets called  IGNORED OBSOLETE
  *                              f.fetecher is used as a Fetcher instance to do this.
  * @param       onDone          callback when
  */
@@ -90,10 +89,10 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
         {
                 if (self.toString() == other.toString()) return [[ [], null]]
                 else return []
-        }*/
+        } */
         var b = []
         b[self] = other
-        return [[ b, null ]] // Match
+        return [ [ b, null ] ] // Match
       }
       actual = self
     }
@@ -105,7 +104,7 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
         other = formula.redirections[other]
       }
       if (actual.sameTerm(other)) {
-        return [[ [], null ]]
+        return [ [ [], null ] ]
       }
       return []
     }
@@ -126,7 +125,7 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
       return [] // no way
     }
     if (!self.length) {
-      return [[ [], null ]] // Success
+      return [ [ [], null ] ] // Success
     }
     var nbs = unifyTerm(self[0], other[0], bindings, formula)
     if (nbs.length === 0) {
@@ -163,7 +162,7 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
             nb2[v] = nb[v]
           }
         }
-        res.push([nb2, null])
+        res.push([ nb2, null ])
       }
     }
     return res
@@ -301,8 +300,8 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
     //    log.debug("Prepare: f has "+ f.statements.length)
     // log.debug("Prepare: Kb size "+f.statements.length+" Preparing "+item)
 
-    terms = [item.subject, item.predicate, item.object]
-    ind = [f.subjectIndex, f.predicateIndex, f.objectIndex]
+    terms = [ item.subject, item.predicate, item.object ]
+    ind = [ f.subjectIndex, f.predicateIndex, f.objectIndex ]
     for (i = 0; i < 3; i++) {
       // alert("Prepare "+terms[i]+" "+(terms[i] in bindings))
       if (terms[i].isVar && !(bindings[terms[i]] !== undefined)) {
@@ -429,7 +428,6 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
       }
     } // if sf
     match2(f, g, bindingsSoFar, level, fetcher, localCallback, branch)
-    return
   } // match
 
   var constraintsSatisfied = function (bindings, constraints) {
@@ -484,8 +482,8 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
     for (c = 0; c < nc; c++) { // For each candidate statement
       st = item.index[c] // for each statement in the item's index, spawn a new match with that binding
       nbs1 = unifyContents(
-        [item.subject, item.predicate, item.object],
-        [st.subject, st.predicate, st.object], bindingsSoFar, f)
+        [ item.subject, item.predicate, item.object ],
+        [ st.subject, st.predicate, st.object ], bindingsSoFar, f)
       log.info(level + ' From first: ' + nbs1.length + ': ' + bindingsDebug(nbs1))
       nk = nbs1.length
       // branch.count += nk
@@ -550,7 +548,7 @@ function indexedFormulaQuery (myQuery, callback, fetcher, onDone) {
       trunck /* branch */)
   }, 0)
 
-  return // returns nothing; callback does the work
+   // returns nothing; callback does the work
 } // query
 
 module.exports.Query = Query

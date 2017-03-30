@@ -10,10 +10,14 @@ const Serializer = require('./serialize')
 const Statement = require('./statement')
 const Variable = require('./variable')
 const ArrayIndexOf = require('./util').ArrayIndexOf
-const Loki = require('lokijs')
+
+const MongoClient = require('mongodb').MongoClient
+// Connection URL
+var url = 'mongodb://localhost:27017/rdflib'
 
 const owl_ns = 'http://www.w3.org/2002/07/owl#'
 let termsMap = [ 'subject', 'predicate', 'object', 'graph', 'statement' ]
+
 // INDEXED_FORMULA functions
 // Handle Functional Property
 function handle_FP (formula, subj, pred, obj) {
@@ -51,20 +55,27 @@ function handleRDFType (formula, subj, pred, obj, why) {
   }
   return done // statement given is not needed if true
 }
+// -----------------------------
 
-class FormulaWithLoki extends Node {
+class FormulaWithMongo extends Node {
   constructor (statements, constraints, initBindings, optional, features) {
     super()
-    this.termType = FormulaWithLoki.termType
-    /** @private */
-    let rn = Math.floor(Math.random() * 100000)
-    this.dbname = 'formula' + rn + '.json'
-    this.db = new Loki(this.dbname)
-    /** @private */
-    this.statements = this.db.addCollection('statements')
-    this.statements.ensureIndex('subject')
-    this.statements.ensureIndex('predicate')
-    this.statements.ensureIndex('object')
+    MongoClient.connect(url, (err, db) => {
+      if (err) { throw (err) }
+      db.statements.createIndex(
+        { object: 1 },
+        { partialFilterExpression: { object: { $exists: true } } }
+      )
+      db.statements.createIndex(
+        { predicate: 1 },
+        { partialFilterExpression: { predicate: { $exists: true } } }
+      )
+      db.statements.createIndex(
+        { subject: 1 },
+        { partialFilterExpression: { subject: { $exists: true } } }
+      )
+      db.close()
+    })
     if (statements) { this.addAll(statements) }
     this.constraints = constraints
     this.initBindings = initBindings
@@ -95,36 +106,57 @@ class FormulaWithLoki extends Node {
    * @memberOf Formula
    */
   add (s, p, o, g) {
-    // NOTE: DataContainerManipulator
+    // NOTE: possible DataContainerManipulator
     let st = new Statement(s, p, o, g)
     return this.addStatement(st)
   }
 
   index () {
-    this.statements.ensureIndex('subject', true)
-    this.statements.ensureIndex('predicate', true)
-    this.statements.ensureIndex('object', true)
+
   }
   /**
    * Add a statement object to the formula.
    * @public
    * @param {any} st
-   * @returns
+   * @returns {Promise}
    *
    * @memberOf Formula
    */
   addStatement (st) {
     // NOTE: DataContainerManipulator
-    let entry = {
+    let entry = this.buildEntry(st)
+    return MongoClient.connect(url)
+    .then((db) => {
+      var statements = db.collection('statements')
+      return statements.insert(entry)
+      .then(() => {
+        db.close()
+        return this
+      })
+    })
+    .catch(err => {
+      console.log('Mongo error at IndexedFormula.addStatement')
+      console.log(err)
+    })
+  }
+
+  buildEntry (...args) {
+    let st
+    if (args[0] instanceof Statement) {
+      st = args[0]
+    } else {
+      if (args.length === 3) args[3] = ''
+      if (args.length === 4) st = new Statement(...args)
+      else { console.log('IndexedFormula.buildEntry(): Wrong argument for building an entry.') }
+    }
+    return {
       subject: st.subject.toCanonical(),
       predicate: st.predicate.toCanonical(),
       object: st.object.toCanonical(),
       graph: st.why.toCanonical(),
       statement: st
     }
-    return this.statements.insert(entry)
   }
-
   /**
    * @public
    * Add an array of Statements to the store
@@ -134,7 +166,22 @@ class FormulaWithLoki extends Node {
    */
   addAll (sts) {
     // NOTE: DataContainerManipulator
-    sts.forEach((st) => { this.addStatement(st) })
+    // Parallelized version with only one db connection,
+    // Should be the most efficient.
+    let formula = this
+    return MongoClient.connect(url)
+      .then((db) => {
+        var collection = db.collection('statements')
+        let pros = []
+        for (let st of sts) {
+          pros.push(collection.insert(this.buildEntry(st)))
+        }
+        Promise.all(pros)
+      .then(() => {
+        db.close()
+        return formula
+      })
+      })
   }
   /**
    * @public
@@ -189,17 +236,22 @@ class FormulaWithLoki extends Node {
     return new Collection()
   }
 
+  /**
+   * Return a promise of the statements in the store
+   *
+   * @returns {Promise}
+   *
+   * @memberOf FormulaWithLoki
+   */
   getStatements () {
-    // NOTE: DataContainerManipulator
-    return this.statements.mapReduce((st) => {
-      return st.statement
-    }, (array) => {
-      var sts = []
-      for (let w of array) {
-        sts.push(w)
-      }
-      return sts
-    })
+    return MongoClient.connect(url)
+      .then((db) => {
+        db.statements.find().map((doc) => doc.statement)
+        .then((res) => {
+          db.close()
+          return res
+        })
+      }).catch(err => { console.log(err) })
   }
 
   /**
@@ -214,13 +266,12 @@ class FormulaWithLoki extends Node {
    *
    * @memberOf Formula
    */
-  statementsMatching (subj, pred, obj, why, justOne) {
+  statementsMatching (subj, pred, obj, why, limit) {
     // NOTE: DataContainerManipulator
     // log.debug("Matching {"+subj+" "+pred+" "+obj+"}")
     var pat = [ subj, pred, obj, why ]
     var pattern = []
     var given = [] // Not wild
-    var list
     var query = {}
     for (let p = 0; p < 4; p++) {
       pattern[p] = this.canon(Node.fromValue(pat[p]))
@@ -231,38 +282,19 @@ class FormulaWithLoki extends Node {
     }
     if (given.length === 0) {
       return this.getStatements()
-    } else
-    if (given.length === 1) { // Easy too, we have an index for that
-      let p = given[0]
-      query[termsMap[p]] = pattern[p].toCanonical()
     } else {
-      let q = []
-      for (let p = 0; p < 4; p++) {
-        if (pattern[p]) {
-          let t = {}
-          t[termsMap[p]] = pattern[p].toCanonical()
-          q.push(t)
+      return MongoClient.connect(url)
+      .then((db) => {
+        for (let p = 0; p < 4; p++) {
+          if (pattern[p]) { query[termsMap[p]] = pattern[p].toCanonical() }
         }
-      }
-      query = {'$and': q}
+        db.statements.find(query).limit(limit || 0).project({_id: 0, statement: 1}).toArray()
+        .then(res => {
+          db.close()
+          return res
+        })
+      })
     }
-    list = this.statements
-      .chain()
-      .find(query, justOne)
-      .mapReduce(
-      (st) => {
-        return st.statement
-      },
-      (array) => {
-        var sts = []
-        for (let w of array) {
-          sts.push(w)
-        }
-        return sts
-      }
-      )
-    list = list || []
-    return list
   }
 
   /**
@@ -334,14 +366,6 @@ class FormulaWithLoki extends Node {
     }
     return this.hashString() === other.hashString()
   }
-  /*
-  For thisClass or any subclass, anything which has it is its type
-  or is the object of something which has the type as its range, or subject
-  of something which has the type as its domain
-  We don't bother doing subproperty (yet?)as it doesn't seeem to be used much.
-  Get all the Classes of which we can RDFS-infer the subject is a member
-  @returns a hash of URIs
-  */
 
   /**
    * @public
@@ -539,7 +563,7 @@ class FormulaWithLoki extends Node {
   }
 
   formula () {
-    return new FormulaWithLoki()
+    return new FormulaWithMongo()
   }
   /**
    * Transforms an NTriples string format into a Node.
@@ -717,7 +741,7 @@ class FormulaWithLoki extends Node {
       return ea.substitute(bindings)
     })
     console.log('Formula subs statements:' + statementsCopy)
-    var y = new FormulaWithLoki()
+    var y = new FormulaWithMongo()
     y.addAll(statementsCopy)
     console.log('indexed-form subs formula:' + y)
     return y
@@ -1016,7 +1040,12 @@ class FormulaWithLoki extends Node {
  */
   length () {
     // NOTE: DataContainerManipulator
-    return this.statements.count()
+    MongoClient.connect(url, function (err, db) {
+      if (err) throw (err)
+      let c = db.find().count()
+      db.close()
+      return c
+    })
   }
 
   /**
@@ -1089,7 +1118,7 @@ class FormulaWithLoki extends Node {
    * (Note: Slow iff a lot of them -- could be O(log(k)) )
    */
   nextSymbol (doc) {
-    for (var i = 0; ;i++) {
+    for (var i = 0; ; i++) {
       var uri = doc.uri + '#n' + i
       if (!this.mentionsURI(uri)) return this.sym(uri)
     }
@@ -1100,9 +1129,9 @@ class FormulaWithLoki extends Node {
     return indexedFormulaQuery.call(this, myQuery, callback, fetcher, onDone)
   }
 
-   /**
-   * Finds a statement object and removes it
-   */
+  /**
+  * Finds a statement object and removes it
+  */
   remove (st) {
     if (st instanceof Array) {
       for (let stat of st) {
@@ -1110,49 +1139,55 @@ class FormulaWithLoki extends Node {
       }
       return this
     }
-    if (st instanceof FormulaWithLoki) {
+    if (st instanceof FormulaWithMongo) {
       return this.remove(st.statements())
     }
-    var sts = this.statementsMatching(st.subject, st.predicate, st.object,
-      st.why)
-    if (!sts.length) {
-      throw new Error('Statement to be removed is not on store: ' + st)
-    }
-    this.removeStatement(sts[0])
-    return this
+    var sts = this.statementsMatching(st.subject, st.predicate, st.object, st.why)
+      .then((match) => {
+        if (!sts.length) {
+          throw new Error('Statement to be removed is not on store: ' + st)
+        }
+        return this.removeStatement(sts[0])
+      })
   }
 
   /**
    * Removes all statemnts in a doc
+   * Return a promise that will pass down "this"
+   *
    */
   removeDocument (doc) {
-    var sts = this.statementsMatching(undefined, undefined, undefined, doc).slice() // Take a copy as this is the actual index
-    for (var i = 0; i < sts.length; i++) {
-      this.removeStatement(sts[i])
-    }
-    return this
+    let formula = this
+    return this.statementsMatching(undefined, undefined, undefined, doc)
+    .then((match) => {
+      let sts = match.slice()
+      for (var i = 0; i < sts.length; i++) {
+        this.removeStatement(sts[i])
+      }
+      return formula
+    }) // Take a copy as this is the actual index
   }
 
   /**
    * remove all statements matching args (within limit) *
    */
   removeMany (subj, pred, obj, why, limit) {
-    // log.debug("entering removeMany w/ subj,pred,obj,why,limit = " + subj +", "+ pred+", " + obj+", " + why+", " + limit)
-    var sts = this.statementsMatching(subj, pred, obj, why, false)
-    // This is a subtle bug that occcured in updateCenter.js too.
-    // The fact is, this.statementsMatching returns this.whyIndex instead of a copy of it
-    // but for perfromance consideration, it's better to just do that
-    // so make a copy here.
-    var statements = []
-    for (var i = 0; i < sts.length; i++) statements.push(sts[i])
-    if (limit) statements = statements.slice(0, limit)
-    for (i = 0; i < statements.length; i++) this.remove(statements[i])
+    return this.statementsMatching(subj, pred, obj, why, limit)
+    .then((res) => {
+      this.removeStatements(res)
+    })
   }
 
   removeMatches (subject, predicate, object, why) {
-    this.removeStatements(this.statementsMatching(subject, predicate, object,
-      why))
-    return this
+    return MongoClient.connect(url)
+    .then((db) => {
+      let statements = db.collection('statements')
+      return statements.deleteMany(
+        this.buildDelQuery(subject, predicate, object, why))
+      .then(() => {
+        db.close()
+      })
+    })
   }
 
   /**
@@ -1162,22 +1197,67 @@ class FormulaWithLoki extends Node {
    *      Make sure you only use this for these.
    *    Otherwise, you should use remove() above.
    */
+
+  buildDelQuery (subject, predicate, object, why) {
+    const term = [ subject, predicate, object, why ]
+    const del = {}
+    for (var p = 0; p < 4; p++) {
+      if (term[p]) { del[termsMap[p]] = this.canon(term[p]) }
+    }
+    return del
+  }
+
+  /**
+   * Remove exactly the given statement. No wildcards allowed.
+   *
+   * @param {any} st
+   * @returns
+   *
+   * @memberOf FormulaWithMongo
+   */
   removeStatement (st) {
     // NOTE: DataContainerManipulator
-    var term = [ st.subject, st.predicate, st.object, st.why ]
-    let statDoc
+    const term = [ st.subject, st.predicate, st.object, st.why ]
+    const statDoc = {}
     for (var p = 0; p < 4; p++) {
       statDoc[termsMap[p]] = this.canon(term[p])
     }
-    this.statements.remove(statDoc)
-    return this
+    statDoc['statement'] = st
+
+    return MongoClient.connect(url)
+    .then((db) => {
+      return db.statements
+      .deleteOne(statDoc)
+      .then((db) => {
+        db.close()
+        return this
+      }
+      )
+    })
   }
 
+  /**
+   * Removes the statements exactly matching the ones provided in the array
+   *
+   * @param {any} sts
+   * @returns
+   *
+   * @memberOf FormulaWithMongo
+   */
   removeStatements (sts) {
-    for (let st of sts) {
-      this.removeStatement(st)
-    }
-    return this
+    return MongoClient.connect(url)
+    .then((db) => {
+      let statements = db.collection('statements')
+      let pros = []
+      for (let st of sts) {
+        pros.push(statements.deleteOne(this.buildEntry(st)))
+      }
+      Promise.all(pros)
+      .then((db) => {
+        db.close()
+        return this
+      })
+    })
   }
 
   /**
@@ -1280,9 +1360,9 @@ class FormulaWithLoki extends Node {
     this.namespaces[prefix] = nsuri
   }
 
-   /**
-   *  A list of all the URIs by which this thing is known
-   */
+  /**
+  *  A list of all the URIs by which this thing is known
+  */
   uris (term) {
     var cterm = this.canon(term)
     var terms = this.aliases[cterm.hashString()]
@@ -1297,12 +1377,12 @@ class FormulaWithLoki extends Node {
   }
 }
 
-FormulaWithLoki.termType = 'Graph'
+FormulaWithMongo.termType = 'Graph'
 
-FormulaWithLoki.prototype.classOrder = ClassOrder['Graph']
-FormulaWithLoki.prototype.isVar = 0
+FormulaWithMongo.prototype.classOrder = ClassOrder['Graph']
+FormulaWithMongo.prototype.isVar = 0
 
-FormulaWithLoki.prototype.ns = require('./namespace')
-FormulaWithLoki.prototype.variable = name => new Variable(name)
+FormulaWithMongo.prototype.ns = require('./namespace')
+FormulaWithMongo.prototype.variable = name => new Variable(name)
 
-module.exports = FormulaWithLoki
+module.exports = FormulaWithMongo
