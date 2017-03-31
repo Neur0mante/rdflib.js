@@ -10,6 +10,7 @@ const Serializer = require('./serialize')
 const Statement = require('./statement')
 const Variable = require('./variable')
 const ArrayIndexOf = require('./util').ArrayIndexOf
+const Promise = require('bluebird')
 
 const MongoClient = require('mongodb').MongoClient
 // Connection URL
@@ -60,23 +61,6 @@ function handleRDFType (formula, subj, pred, obj, why) {
 class FormulaWithMongo extends Node {
   constructor (statements, constraints, initBindings, optional, features) {
     super()
-    MongoClient.connect(url, (err, db) => {
-      if (err) { throw (err) }
-      db.statements.createIndex(
-        { object: 1 },
-        { partialFilterExpression: { object: { $exists: true } } }
-      )
-      db.statements.createIndex(
-        { predicate: 1 },
-        { partialFilterExpression: { predicate: { $exists: true } } }
-      )
-      db.statements.createIndex(
-        { subject: 1 },
-        { partialFilterExpression: { subject: { $exists: true } } }
-      )
-      db.close()
-    })
-    if (statements) { this.addAll(statements) }
     this.constraints = constraints
     this.initBindings = initBindings
     this.optional = optional
@@ -93,6 +77,30 @@ class FormulaWithMongo extends Node {
       'FunctionalProperty'
     ]
     this.initPropertyActions(this.features)
+  }
+  init () {
+    let Formula = this
+    return MongoClient.connect(url)
+      .then((db) => {
+        let statements = db.collection('statements')
+        return Promise.all([
+          statements.createIndex(
+            { object: 1 },
+            { partialFilterExpression: { object: { $exists: true } } }
+          ),
+          statements.createIndex(
+            { predicate: 1 },
+            { partialFilterExpression: { predicate: { $exists: true } } }
+          ),
+          statements.createIndex(
+            { subject: 1 },
+            { partialFilterExpression: { subject: { $exists: true } } }
+          ) ])
+          .then(() => {
+            db.close()
+            return Formula
+          })
+      })
   }
   /**
    * Add a statement to the formula. Takes s, p, o and g as arguments.
@@ -126,18 +134,18 @@ class FormulaWithMongo extends Node {
     // NOTE: DataContainerManipulator
     let entry = this.buildEntry(st)
     return MongoClient.connect(url)
-    .then((db) => {
-      var statements = db.collection('statements')
-      return statements.insert(entry)
-      .then(() => {
-        db.close()
-        return this
+      .then((db) => {
+        var statements = db.collection('statements')
+        return statements.insert(entry)
+          .then(() => {
+            db.close()
+            return this
+          })
       })
-    })
-    .catch(err => {
-      console.log('Mongo error at IndexedFormula.addStatement')
-      console.log(err)
-    })
+      .catch(err => {
+        console.log('Mongo error at IndexedFormula.addStatement')
+        console.log(err)
+      })
   }
 
   buildEntry (...args) {
@@ -149,13 +157,14 @@ class FormulaWithMongo extends Node {
       if (args.length === 4) st = new Statement(...args)
       else { console.log('IndexedFormula.buildEntry(): Wrong argument for building an entry.') }
     }
-    return {
+    let entry = {
       subject: st.subject.toCanonical(),
       predicate: st.predicate.toCanonical(),
       object: st.object.toCanonical(),
       graph: st.why.toCanonical(),
       statement: st
     }
+    return entry
   }
   /**
    * @public
@@ -168,7 +177,6 @@ class FormulaWithMongo extends Node {
     // NOTE: DataContainerManipulator
     // Parallelized version with only one db connection,
     // Should be the most efficient.
-    let formula = this
     return MongoClient.connect(url)
       .then((db) => {
         var collection = db.collection('statements')
@@ -176,11 +184,11 @@ class FormulaWithMongo extends Node {
         for (let st of sts) {
           pros.push(collection.insert(this.buildEntry(st)))
         }
-        Promise.all(pros)
-      .then(() => {
-        db.close()
-        return formula
-      })
+        return Promise.all(pros)
+          .then(() => {
+            db.close()
+            return this
+          })
       })
   }
   /**
@@ -246,11 +254,15 @@ class FormulaWithMongo extends Node {
   getStatements () {
     return MongoClient.connect(url)
       .then((db) => {
-        db.statements.find().map((doc) => doc.statement)
-        .then((res) => {
-          db.close()
-          return res
-        })
+        let statements = db.collection('statements')
+        return statements.find({}).toArray()
+          .then((res) => {
+            console.log(res)
+            res = res.map(el => el.statement)
+            console.log(res)
+            db.close()
+            return res
+          })
       }).catch(err => { console.log(err) })
   }
 
@@ -283,17 +295,19 @@ class FormulaWithMongo extends Node {
     if (given.length === 0) {
       return this.getStatements()
     } else {
+      for (let p = 0; p < 4; p++) {
+        if (pattern[p]) { query[termsMap[p]] = pattern[p].toCanonical() }
+      }
       return MongoClient.connect(url)
-      .then((db) => {
-        for (let p = 0; p < 4; p++) {
-          if (pattern[p]) { query[termsMap[p]] = pattern[p].toCanonical() }
-        }
-        db.statements.find(query).limit(limit || 0).project({_id: 0, statement: 1}).toArray()
-        .then(res => {
-          db.close()
-          return res
+        .then((db) => {
+          let statements = db.collection('statements')
+          statements.find(query).limit(limit || 0).project({_id: 0, statement: 1}).toArray()
+            .then(res => {
+              let re = res.map(el => el.statement)
+              db.close()
+              return re
+            })
         })
-      })
     }
   }
 
@@ -1040,12 +1054,16 @@ class FormulaWithMongo extends Node {
  */
   length () {
     // NOTE: DataContainerManipulator
-    MongoClient.connect(url, function (err, db) {
-      if (err) throw (err)
-      let c = db.find().count()
-      db.close()
-      return c
-    })
+    return MongoClient.connect(url)
+      .then((db) => {
+        let statements = db.collection('statements')
+        return statements.find({}).count()
+          .then((count) => {
+            db.close()
+            console.log('count:' + count)
+            return count
+          })
+      })
   }
 
   /**
@@ -1159,13 +1177,13 @@ class FormulaWithMongo extends Node {
   removeDocument (doc) {
     let formula = this
     return this.statementsMatching(undefined, undefined, undefined, doc)
-    .then((match) => {
-      let sts = match.slice()
-      for (var i = 0; i < sts.length; i++) {
-        this.removeStatement(sts[i])
-      }
-      return formula
-    }) // Take a copy as this is the actual index
+      .then((match) => {
+        let sts = match.slice()
+        for (var i = 0; i < sts.length; i++) {
+          this.removeStatement(sts[i])
+        }
+        return formula
+      }) // Take a copy as this is the actual index
   }
 
   /**
@@ -1173,37 +1191,43 @@ class FormulaWithMongo extends Node {
    */
   removeMany (subj, pred, obj, why, limit) {
     return this.statementsMatching(subj, pred, obj, why, limit)
-    .then((res) => {
-      this.removeStatements(res)
-    })
+      .then((res) => {
+        this.removeStatements(res)
+      })
   }
 
   removeMatches (subject, predicate, object, why) {
     return MongoClient.connect(url)
-    .then((db) => {
-      let statements = db.collection('statements')
-      return statements.deleteMany(
-        this.buildDelQuery(subject, predicate, object, why))
-      .then(() => {
-        db.close()
+      .then((db) => {
+        let statements = db.collection('statements')
+        return statements.deleteMany(
+          this.buildDelQuery(subject, predicate, object, why))
+          .then(() => {
+            db.close()
+          })
       })
-    })
   }
 
-  /**
-   * Remove a particular statement object from the store
-   *
-   * st    a statement which is already in the store and indexed.
-   *      Make sure you only use this for these.
-   *    Otherwise, you should use remove() above.
-   */
+  clearFormula () {
+    return MongoClient.connect(url)
+      .then((db) => {
+        let statements = db.collection('statements')
+        return statements.deleteMany()
+          .then(() => {
+            db.close()
+            return this
+          })
+      })
+  }
 
   buildDelQuery (subject, predicate, object, why) {
-    const term = [ subject, predicate, object, why ]
+    const term = [ Node.fromValue(subject), Node.fromValue(predicate), Node.fromValue(object), Node.fromValue(why) ]
+    console.log(term)
     const del = {}
     for (var p = 0; p < 4; p++) {
-      if (term[p]) { del[termsMap[p]] = this.canon(term[p]) }
+      if (term[p]) { del[termsMap[p]] = term[p].toCanonical() }
     }
+    console.log(del)
     return del
   }
 
@@ -1225,15 +1249,16 @@ class FormulaWithMongo extends Node {
     statDoc['statement'] = st
 
     return MongoClient.connect(url)
-    .then((db) => {
-      return db.statements
-      .deleteOne(statDoc)
       .then((db) => {
-        db.close()
-        return this
-      }
-      )
-    })
+        let statements = db.collection('statements')
+        return statements
+          .deleteOne(statDoc)
+          .then(() => {
+            db.close()
+            return this
+          }
+          )
+      })
   }
 
   /**
@@ -1246,18 +1271,18 @@ class FormulaWithMongo extends Node {
    */
   removeStatements (sts) {
     return MongoClient.connect(url)
-    .then((db) => {
-      let statements = db.collection('statements')
-      let pros = []
-      for (let st of sts) {
-        pros.push(statements.deleteOne(this.buildEntry(st)))
-      }
-      Promise.all(pros)
       .then((db) => {
-        db.close()
-        return this
+        let statements = db.collection('statements')
+        let pros = []
+        for (let st of sts) {
+          pros.push(statements.deleteOne(this.buildEntry(st)))
+        }
+        return Promise.all(pros)
+          .then(() => {
+            db.close()
+            return this
+          })
       })
-    })
   }
 
   /**

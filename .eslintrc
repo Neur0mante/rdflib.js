@@ -2,7 +2,8 @@
   "extends": "standard",
   "plugins": [
     "standard",
-    "promise"
+    "promise",
+    "mocha"
   ],
   "rules": {
     "array-bracket-spacing": [

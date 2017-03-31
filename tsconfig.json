@@ -6,7 +6,8 @@
     "noImplicitAny": false,
     "sourceMap": false,
     "types": [
-      "lokijs"
+      "lokijs",
+      "mocha"
     ]
   }
 }
