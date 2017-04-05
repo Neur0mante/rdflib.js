@@ -18,6 +18,7 @@ class Formula extends Node {
     this.constraints = constraints || []
     this.initBindings = initBindings || []
     this.optional = optional || []
+    this.namespaces = []
   }
   add (s, p, o, g) {
     return this.statements.push(new Statement(s, p, o, g))
@@ -96,6 +97,7 @@ class Formula extends Node {
     }
     return results
   }
+
   equals (other) {
     if (!other) {
       return false
@@ -348,6 +350,10 @@ class Formula extends Node {
     throw new Error("Can't convert from NT: " + str)
   }
 
+  getStatements () {
+    return this.statements
+  }
+
   holds (s, p, o, g) {
     var i
     if (arguments.length === 1) {
@@ -374,6 +380,11 @@ class Formula extends Node {
   holdsStatement (st) {
     return this.holds(st.subject, st.predicate, st.object, st.why)
   }
+
+  length () {
+    return this.statements.length
+  }
+
   list (values) {
     let collection = new Collection()
     values.forEach(function (val) {
@@ -439,11 +450,24 @@ class Formula extends Node {
     console.log('indexed-form subs formula:' + y)
     return y
   }
+
   sym (uri, name) {
     if (name) {
       throw new Error('This feature (kb.sym with 2 args) is removed. Do not assume prefix mappings.')
     }
     return new NamedNode(uri)
+  }
+  setPrefixForURI (prefix, nsuri) {
+    // TODO: This is a hack for our own issues, which ought to be fixed
+    // post-release
+    // See http://dig.csail.mit.edu/cgi-bin/roundup.cgi/$rdf/issue227
+    if (prefix === 'tab' && this.namespaces['tab']) {
+      return
+    } // There are files around with long badly generated prefixes like this
+    if (prefix.slice(0, 2) === 'ns' || prefix.slice(0, 7) === 'default') {
+      return
+    }
+    this.namespaces[prefix] = nsuri
   }
   the (s, p, o, g) {
     var x = this.any(s, p, o, g)

@@ -7,6 +7,11 @@ const XSD = require('./xsd')
 class Literal extends Node {
   constructor (value, language, datatype) {
     super()
+    this.classOrder = ClassOrder['Literal']
+    this.datatype = XSD.string
+    this.lang = ''
+    this.isVar = 0
+
     this.termType = Literal.termType
     this.value = value
     if (language) {
@@ -124,7 +129,7 @@ class Literal extends Node {
       case 'object':
         if (value instanceof Date) {
           return Literal.fromDate(value)
-        }
+        } 
       case 'boolean':
         return Literal.fromBoolean(value)
       case 'number':
@@ -134,13 +139,16 @@ class Literal extends Node {
     }
     throw new Error("Can't make literal from " + value + ' of type ' +
       typeof value)
-
   }
 }
 Literal.termType = 'Literal'
-Literal.prototype.classOrder = ClassOrder['Literal']
-Literal.prototype.datatype = XSD.string
-Literal.prototype.lang = ''
-Literal.prototype.isVar = 0
 
+Literal.deserialize = function ({ classOrder,
+        datatype,
+        lang,
+        isVar,
+        termType,
+        value }) {
+  return new Literal(value, lang || null, datatype || null)
+}
 module.exports = Literal

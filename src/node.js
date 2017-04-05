@@ -60,16 +60,22 @@ module.exports = Node
 Node.fromValue = function fromValue (value) {
   const Collection = require('./collection')
   const Literal = require('./literal')
-  const NamedNode = require('./named-node')
   if (typeof value === 'undefined' || value === null) {
     return value
   }
-  const isNode = value && value.termType
-  if (isNode) {  // a Node subclass or a Collection
+  if (value instanceof Node) {  // a Node subclass or a Collection
     return value
   }
   if (Array.isArray(value)) {
     return new Collection(value)
   }
   return Literal.fromValue(value)
+}
+
+Node.deserialize = function (obj) {
+  const Literal = require('./literal')
+  const NamedNode = require('./named-node')
+  if (obj.termType === 'Literal') return Literal.deserialize(obj)
+  else if (obj.termType === 'NamedNode') return NamedNode.deserialize(obj)
+  else console.log('Deserialization failed.')
 }

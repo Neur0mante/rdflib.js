@@ -11,8 +11,11 @@ class NamedNode extends Node {
    * @constructor
    * @param iri {String}
    */
+
   constructor (iri) {
     super()
+    this.classOrder = ClassOrder['NamedNode']
+    this.isVar = 0
     if (typeof iri !== 'string') {
       console.log('Warning: NamedNode constructor requires a string argument, got' + typeof iri + ' ' + iri)
       if (iri instanceof Node) return iri
@@ -38,10 +41,10 @@ class NamedNode extends Node {
     if ((q >= 0 && p < q + 2) || p < 0) return null
     return new NamedNode(str.slice(0, p + 1))
   }
-   /**
-    * Returns an NN for the whole web site, ending in slash.
-    * Contrast with the "origin" which does NOT have a trailing slash
-    */
+  /**
+   * Returns an NN for the whole web site, ending in slash.
+   * Contrast with the "origin" which does NOT have a trailing slash
+   */
   site () {
     var str = this.uri.split('#')[0]
     var p = str.indexOf('//')
@@ -82,7 +85,7 @@ class NamedNode extends Node {
   }
 }
 NamedNode.termType = 'NamedNode'
-NamedNode.prototype.classOrder = ClassOrder['NamedNode']
-NamedNode.prototype.isVar = 0
-
+NamedNode.deserialize = function ({ classOrder, isVar, termType, value }) {
+  return new NamedNode(value)
+}
 module.exports = NamedNode

@@ -38,7 +38,7 @@ const RDFParser = require('./rdfxmlparser')
 const Uri = require('./uri')
 const Util = require('./util')
 const serialize = require('./serialize')
-
+const LwFormula = require('./formula')
 var Parsable = {
   'text/n3': true,
   'text/turtle': true,
@@ -48,8 +48,9 @@ var Parsable = {
   'application/ld+json': true
 }
 
-var Fetcher = function Fetcher (store, timeout, async) {
-  this.store = store
+var Fetcher = function Fetcher (operationalStore, formulaMongo, timeout, async) {
+  this.store = operationalStore
+  this.formulaMongo = formulaMongo
   this.thisURI = 'http://dig.csail.mit.edu/2005/ajar/ajaw/rdf/sources.js' + '#SourceFetcher' // -- Kenny
   this.timeout = timeout || 30000
   this.async = async != null ? async : true
@@ -71,7 +72,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
   this.nonexistant = {} // keep track of explict 404s -> we can overwrite etc
   this.lookedUp = {}
   this.handlers = []
-  this.mediatypes = { }
+  this.mediatypes = {}
   var sf = this
   var kb = this.store
   var ns = {} // Convenience namespaces needed in this module:
@@ -162,7 +163,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
         var title = this.dom.getElementsByTagName('title')
         if (title.length > 0) {
           kb.add(xhr.resource, ns.dc('title'), kb.literal(title[0].textContent), xhr.resource)
-        // log.info("Inferring title of " + xhr.resource)
+          // log.info("Inferring title of " + xhr.resource)
         }
 
         // link rel
@@ -232,7 +233,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
             // Is it RDF/XML?
             if (ns && ns === ns['rdf']) {
               sf.addStatus(xhr.req, 'Has XML root element in the RDF namespace, so assume RDF/XML.')
-              sf.switchHandler('RDFXMLHandler', xhr, cb, [dom])
+              sf.switchHandler('RDFXMLHandler', xhr, cb, [ dom ])
               return
             }
             // it isn't RDF/XML or we can't tell
@@ -324,7 +325,8 @@ var Fetcher = function Fetcher (store, timeout, async) {
           return
         }
 
-        // dc:title	                       //no need to escape '/' here
+        // dc:title
+        // no need to escape '/' here
         var titleMatch = (new RegExp('<title>([\\s\\S]+?)</title>', 'im')).exec(rt)
         if (titleMatch) {
           var kb = sf.store
@@ -340,7 +342,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
         }
         sf.addStatus(xhr.req, 'non-XML HTML document, not parsed for data.')
         sf.doneFetch(xhr)
-      // sf.failFetch(xhr, "Sorry, can't yet parse non-XML HTML")
+        // sf.failFetch(xhr, "Sorry, can't yet parse non-XML HTML")
       }
     }
   }
@@ -380,8 +382,8 @@ var Fetcher = function Fetcher (store, timeout, async) {
         // We give up finding semantics - this is not an error, just no data
         sf.addStatus(xhr.req, 'Plain text document, no known RDF semantics.')
         sf.doneFetch(xhr)
-      //                sf.failFetch(xhr, "unparseable - text/plain not visibly XML")
-      //                dump(xhr.resource + " unparseable - text/plain not visibly XML, starts:\n" + rt.slice(0, 500)+"\n")
+        //                sf.failFetch(xhr, "unparseable - text/plain not visibly XML")
+        //                dump(xhr.resource + " unparseable - text/plain not visibly XML, starts:\n" + rt.slice(0, 500)+"\n")
       }
     }
   }
@@ -401,10 +403,12 @@ var Fetcher = function Fetcher (store, timeout, async) {
       xhr.handle = function (cb) {
         // Parse the text of this non-XML file
 
+        // we are gonna use the watered down version of Formula
+        // it's basically an array with just the utility methods required by the parser.
+        let parserFormula = new LwFormula()
         // console.log('web.js: Parsing as N3 ' + xhr.resource.uri + ' base: ' + xhr.original.uri) // @@@@ comment me out
         // sf.addStatus(xhr.req, "N3 not parsed yet...")
-        var p = N3Parser(kb, kb, xhr.original.uri, xhr.original.uri, null, null, '', null)
-        //                p.loadBuf(xhr.responseText)
+        var p = N3Parser(parserFormula, parserFormula, xhr.original.uri, xhr.original.uri, null, null, '', null)
         try {
           p.loadBuf(xhr.responseText)
         } catch (e) {
@@ -413,11 +417,15 @@ var Fetcher = function Fetcher (store, timeout, async) {
           sf.failFetch(xhr, msg)
           return
         }
-
-        sf.addStatus(xhr.req, 'N3 parsed: ' + p.statementCount + ' triples in ' + p.lines + ' lines.')
-        sf.store.add(xhr.original, ns.rdf('type'), ns.link('RDFDocument'), sf.appNode)
+        // console.log('fetching completed. Loaded ' + parserFormula.length())
+        let sts = parserFormula.getStatements()
+        sf.formulaMongo.addAll(sts)
+        .then(() => {
+          sf.addStatus(xhr.req, 'N3 parsed: ' + p.statementCount + ' triples in ' + p.lines + ' lines.')
+          sf.store.add(xhr.original, ns.rdf('type'), ns.link('RDFDocument'), sf.appNode)
         // var args = [xhr.original.uri] // Other args needed ever?
-        sf.doneFetch(xhr)
+          sf.doneFetch(xhr)
+        })
       }
     }
   }
@@ -440,7 +448,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
   }
   Fetcher.N3Handler.pattern = new RegExp('(application|text)/(x-)?(rdf\\+)?(n3|turtle)')
 
-  Util.callbackify(this, ['request', 'recv', 'headers', 'load', 'fail', 'refresh', 'retract', 'done'])
+  Util.callbackify(this, [ 'request', 'recv', 'headers', 'load', 'fail', 'refresh', 'retract', 'done' ])
 
   this.addHandler = function (handler) {
     sf.handlers.push(handler)
@@ -496,7 +504,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
       this.fetchCallbacks[xhr.original.uri].shift()(false, 'Fetch of <' + xhr.original.uri + '> failed: ' + status, xhr)
     }
     delete this.fetchCallbacks[xhr.original.uri]
-    this.fireCallbacks('fail', [xhr.original.uri, status])
+    this.fireCallbacks('fail', [ xhr.original.uri, status ])
     xhr.abort()
     return xhr
   }
@@ -530,7 +538,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
     var link
     try {
       link = xhr.getResponseHeader('link') // May crash from CORS error
-    } catch (e) {}
+    } catch (e) { }
     if (link) {
       var linkexp = /<[^>]*>\s*(\s*;\s*[^\(\)<>@,;:"\/\[\]\?={} \t]+=(([^\(\)<>@,;:"\/\[\]\?={} \t]+)|("[^"]*")))*(,|$)/g
       var paramexp = /[^\(\)<>@,;:"\/\[\]\?={} \t]+=(([^\(\)<>@,;:"\/\[\]\?={} \t]+)|("[^"]*"))/g
@@ -559,7 +567,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
       this.fetchCallbacks[xhr.original.uri].shift()(true, undefined, xhr)
     }
     delete this.fetchCallbacks[xhr.original.uri]
-    this.fireCallbacks('done', [xhr.original.uri])
+    this.fireCallbacks('done', [ xhr.original.uri ])
   }
   var handlerList = [
     Fetcher.RDFXMLHandler, Fetcher.XHTMLHandler,
@@ -585,9 +593,8 @@ var Fetcher = function Fetcher (store, timeout, async) {
   // Returns promise of XHR
   //
   //  Writes back to the web what we have in the store for this uri
-  this.putBack = function (uri, options) {
+  this.putBack = function (uri, options = {}) {
     uri = uri.uri || uri // Accept object or string
-    options = options || {}
     var doc = new NamedNode(uri).doc() // strip off #
     options.data = serialize(doc, this.store, doc.uri, options.contentType || 'text/turtle')
     return this.webOperation('PUT', uri, options)
@@ -595,8 +602,8 @@ var Fetcher = function Fetcher (store, timeout, async) {
 
   // Returns promise of XHR
   //
-  this.webOperation = function (method, uri, options) {
-    uri = uri.uri || uri; options = options || {}
+  this.webOperation = function (method, uri, options = {}) {
+    uri = uri.uri || uri
     uri = this.proxyIfNecessary(uri)
     var fetcher = this
     return new Promise(function (resolve, reject) {
@@ -762,11 +769,10 @@ var Fetcher = function Fetcher (store, timeout, async) {
       // referingTerm = undefined
     } else if (p2 instanceof NamedNode) {
       // referingTerm = p2
-      options = {referingTerm: p2}
+      options = { referingTerm: p2 }
     } else {
       options = p2
     }
-
     this.requestURI(uri, p2, options || {}, userCallback)
   }
 
@@ -904,7 +910,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
       // "No look-up operation on these, but they are not errors?"
       console.log('Unsupported protocol in: ' + docuri)
       return userCallback(false, 'Unsupported protocol', { 'status': 900 }) ||
-      undefined
+        undefined
     }
     var docterm = kb.sym(docuri)
 
@@ -916,10 +922,10 @@ var Fetcher = function Fetcher (store, timeout, async) {
       if (sta === 'failed') {
         return userCallback
           ? userCallback(false, 'Previously failed. ' + this.requested[docuri],
-            {'status': this.requested[docuri]})
+            { 'status': this.requested[docuri] })
           : undefined // An xhr standin
       }
-    // if (sta === 'requested') return userCallback? userCallback(false, "Sorry already requested - pending already.", {'status': 999 }) : undefined
+      // if (sta === 'requested') return userCallback? userCallback(false, "Sorry already requested - pending already.", {'status': 999 }) : undefined
     } else {
       delete this.nonexistant[docuri]
     }
@@ -1066,7 +1072,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
           sf.fireCallbacks('recv', args)
           var kb = sf.store
           sf.saveResponseMetadata(xhr, kb)
-          sf.fireCallbacks('headers', [{uri: docuri, headers: xhr.headers}])
+          sf.fireCallbacks('headers', [ { uri: docuri, headers: xhr.headers } ])
 
           // Check for masked errors.
           // For "security reasons" theboraser hides errors such as CORS errors from
@@ -1092,7 +1098,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
               if (xhr.statusText) {
                 kb.add(response2, ns.http('statusText'), kb.literal(xhr.statusText), response2)
               }
-            // dump("HTTP >= 400 responseText:\n"+xhr.responseText+"\n"); // @@@@
+              // dump("HTTP >= 400 responseText:\n"+xhr.responseText+"\n"); // @@@@
             }
             sf.failFetch(xhr, 'HTTP error for ' + xhr.resource + ': ' + xhr.status + ' ' + xhr.statusText)
             return
@@ -1109,7 +1115,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
                 kb.add(kb.sym(loc), ns.rdf('type'), cla, sf.appNode)
               }
             }
-            for (;;) {
+            for (; ;) {
               var doc = kb.any(prev, ns.link('requestedURI'))
               if (doc && doc.value) {
                 kb.add(kb.sym(doc.value), ns.rdf('type'), cla, sf.appNode)
@@ -1125,8 +1131,12 @@ var Fetcher = function Fetcher (store, timeout, async) {
           }
           // This is a minimal set to allow the use of damaged servers if necessary
           var extensionToContentType = {
-            'rdf': 'application/rdf+xml', 'owl': 'application/rdf+xml',
-            'n3': 'text/n3', 'ttl': 'text/turtle', 'nt': 'text/n3', 'acl': 'text/n3',
+            'rdf': 'application/rdf+xml',
+            'owl': 'application/rdf+xml',
+            'n3': 'text/n3',
+            'ttl': 'text/turtle',
+            'nt': 'text/n3',
+            'acl': 'text/n3',
             'html': 'text/html',
             'xml': 'text/xml'
           }
@@ -1200,7 +1210,6 @@ var Fetcher = function Fetcher (store, timeout, async) {
             // sf.failFetch(xhr, "Unhandled content type: " + xhr.headers['content-type']+
             //        ", readyState = "+xhr.readyState)
             */
-            return
           }
         }
 
@@ -1298,8 +1307,8 @@ var Fetcher = function Fetcher (store, timeout, async) {
               } else {
                 sf.addStatus(xhr.req, 'Fetch over. No data handled. Aborted = ' + xhr.aborted)
               }
-            // sf.failFetch(xhr, "HTTP failed unusually. (no handler set) (x-site violation? no net?) for <"+
-            //    docuri+">")
+              // sf.failFetch(xhr, "HTTP failed unusually. (no handler set) (x-site violation? no net?) for <"+
+              //    docuri+">")
             }
             break
         } // switch
@@ -1363,7 +1372,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
     if (typeof tabulator !== 'undefined' &&
       tabulator.isExtension && xhr.channel &&
       (Uri.protocol(xhr.resource.uri) === 'http' ||
-      Uri.protocol(xhr.resource.uri) === 'https')) {
+        Uri.protocol(xhr.resource.uri) === 'https')) {
       try {
         xhr.channel.notificationCallbacks = {
           getInterface: function (iid) {
@@ -1406,7 +1415,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
                       msg += ' Link in <' + badDoc + ' >should be changed'
                       kb.add(badDoc, kb.sym('http://www.w3.org/2007/ont/link#warning'), msg, sf.appNode)
                     }
-                  // dump(msg+"\n")
+                    // dump(msg+"\n")
                   }
                   xhr.abort()
                   xhr.aborted = true
@@ -1441,7 +1450,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
                       sf.appNode
                     )
                   }
-                // else dump("No xhr.req available for redirect from "+xhr.resource+" to "+newURI+"\n")
+                  // else dump("No xhr.req available for redirect from "+xhr.resource+" to "+newURI+"\n")
                 },
 
                 // See https://developer.mozilla.org/en/XPCOM_Interface_Reference/nsIChannelEventSink
@@ -1485,7 +1494,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
                       msg += ' Link in <' + badDoc + ' >should be changed'
                       kb.add(badDoc, kb.sym('http://www.w3.org/2007/ont/link#warning'), msg, sf.appNode)
                     }
-                  // dump(msg+"\n")
+                    // dump(msg+"\n")
                   }
                   xhr.abort()
                   xhr.aborted = true
@@ -1521,7 +1530,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
                       )
                     }
                   }
-                // else dump("No xhr.req available for redirect from "+xhr.resource+" to "+newURI+"\n")
+                  // else dump("No xhr.req available for redirect from "+xhr.resource+" to "+newURI+"\n")
                 } // asyncOnChannelRedirect
               }
             }
@@ -1549,7 +1558,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
       xhr.setRequestHeader('Accept', acceptstring)
       this.addStatus(xhr.req, 'Accept: ' + acceptstring)
 
-    // if (requester) { xhr.setRequestHeader('Referer',requester) }
+      // if (requester) { xhr.setRequestHeader('Referer',requester) }
     } catch (err) {
       throw new Error("Can't set Accept header: " + err)
     }
@@ -1575,7 +1584,7 @@ var Fetcher = function Fetcher (store, timeout, async) {
     if (typeof uris !== 'undefined') {
       for (var i = 0; i < uris.length; i++) {
         this.refresh(this.store.sym(Uri.docpart(uris[i])))
-      // what about rterm?
+        // what about rterm?
       }
     }
   }
@@ -1618,9 +1627,9 @@ var Fetcher = function Fetcher (store, timeout, async) {
     // if it's not pending: false -> flailed 'done' -> done 'redirected' -> redirected
     return this.requested[docuri] === true
   }
-// var updatesVia = new $rdf.UpdatesVia(this) // Subscribe to headers
-// @@@@@@@@ This is turned off because it causes a websocket to be set up for ANY fetch
-// whether we want to track it ot not. including ontologies loaed though the XSSproxy
+  // var updatesVia = new $rdf.UpdatesVia(this) // Subscribe to headers
+  // @@@@@@@@ This is turned off because it causes a websocket to be set up for ANY fetch
+  // whether we want to track it ot not. including ontologies loaed though the XSSproxy
 } // End of fetcher
 
 module.exports = Fetcher

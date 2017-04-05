@@ -7,7 +7,8 @@ class BlankNode extends Node {
     super()
     this.termType = BlankNode.termType
     this.id = BlankNode.nextId++
-    this.value = id || this.id.toString()
+    this.value = this.id
+    // this.value = id || this.id.toString()
   }
   compareTerm (other) {
     if (this.classOrder < other.classOrder) {
@@ -30,7 +31,7 @@ class BlankNode extends Node {
     return bnodeNew
   }
   toCanonical () {
-    return '_:' + this.value
+    return 'blankNodeN' + this.id
   }
   toString () {
     return BlankNode.NTAnonymousNodePrefix + this.id

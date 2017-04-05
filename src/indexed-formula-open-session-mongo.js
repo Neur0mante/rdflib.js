@@ -76,12 +76,14 @@ class FormulaWithMongo extends Node {
       'InverseFunctionalProperty',
       'FunctionalProperty'
     ]
+    this.db = null
     this.initPropertyActions(this.features)
   }
   init () {
     let Formula = this
     return MongoClient.connect(url)
       .then((db) => {
+        this.db = db
         let statements = db.collection('statements')
         return Promise.all([
           statements.createIndex(
@@ -108,7 +110,7 @@ class FormulaWithMongo extends Node {
           )
         ])
           .then(() => {
-            db.close()
+            // db.close()
             return Formula
           })
       })
@@ -187,35 +189,46 @@ class FormulaWithMongo extends Node {
   addAll (sts) {
     // NOTE: DataContainerManipulator
     let form = this
-    return MongoClient.connect(url)
-      .then((db) => {
-        var collection = db.collection('statements')
-        let i = 0
-        let promises = []
-        let slice = 500 // NOTE: This is the slicing parameter. 500 seems a good round number but it's
-        // probably system-dependent
-        // This function slice the array of element to insert in pieces, that create an array of promises
-        // that will insert each slice indipendently.
-        let sliceanddice = function () {
-          if (sts.length - i > slice) {
-            let entries = sts.slice(i, i + slice - 1).map(st => { return form.buildEntry(st) })
-            i = i + slice
-            promises.push(collection.insertMany(entries))
-            return sliceanddice()
-          } else {
-            sts = sts.slice(i)
-            let entries = sts.map(st => { return form.buildEntry(st) })
-            promises.push(collection.insertMany(entries))
-            return promises
-          }
+    function insertAll (db, stats) {
+      var collection = db.collection('statements')
+      let i = 0
+      let promises = []
+      let slice = 500 // NOTE: This is the slicing parameter. 500 seems a good round number but it's
+      // probably system-dependent
+      // This function slice the array of element to insert in pieces, that create an array of promises
+      // that will insert each slice indipendently.
+      let sliceanddice = function () {
+        if (sts.length - i > slice) {
+          let entries = sts.slice(i, i + slice - 1).map(st => { return form.buildEntry(st) })
+          i = i + slice
+          promises.push(collection.insertMany(entries))
+          return sliceanddice()
+        } else {
+          sts = sts.slice(i)
+          let entries = sts.map(st => { return form.buildEntry(st) })
+          promises.push(collection.insertMany(entries))
+          return promises
         }
-        // Waiting for all promises to finish
-        return Promise.all(sliceanddice(sts))
-          .then(() => {
-            db.close()
-            return this
-          })
-      })
+      }
+      return (sliceanddice(stats))
+    }
+
+    if (!this.db) {
+      return MongoClient.connect(url)
+        .then((db) => {
+          // Waiting for all promises to finish
+          return Promise.all(insertAll(db, sts))
+            .then(() => {
+              db.close()
+              return this
+            })
+        })
+    } else {
+      return Promise.all(insertAll(this.db, sts))
+        .then(() => {
+          return this
+        })
+    }
   }
 
   /**
@@ -323,19 +336,32 @@ class FormulaWithMongo extends Node {
       return this.getStatements()
     } else {
       query = this.buildQuery(...pattern)
-      return MongoClient.connect(url)
-        .then((db) => {
-          let statements = db.collection('statements')
-          return statements.find(query)
-            .limit(limit || 0)
-            .project({_id: 0})
-            .toArray()
-            .then(res => {
-              res = res.map(el => Statement.deserialize(el.statement))
-              db.close()
-              return res
-            })
-        })
+      if (this.db) {
+        let statements = this.db.collection('statements')
+        return statements
+          .find(query)
+          .limit(limit || 0)
+          .project({ _id: 0 })
+          .toArray()
+          .then(res => {
+            res = res.map(el => Statement.deserialize(el.statement))
+            return res
+          })
+      } else {
+        return MongoClient.connect(url)
+          .then((db) => {
+            let statements = db.collection('statements')
+            return statements.find(query)
+              .limit(limit || 0)
+              .project({ _id: 0 })
+              .toArray()
+              .then(res => {
+                res = res.map(el => Statement.deserialize(el.statement))
+                db.close()
+                return res
+              })
+          })
+      }
     }
   }
 
@@ -351,6 +377,12 @@ class FormulaWithMongo extends Node {
       return term
     }
     return y
+  }
+
+  closeDB () {
+    if (this.db) {
+      return this.db.close()
+    }
   }
 
   /**

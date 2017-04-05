@@ -5,7 +5,7 @@ class DefaultGraph extends Node {
   constructor () {
     super()
     this.termType = 'DefaultGraph'
-    this.value = ''
+    this.value = 'http://default.graph'
   }
   toCanonical () {
     return this.value

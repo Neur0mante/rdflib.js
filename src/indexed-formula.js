@@ -62,9 +62,6 @@ class FormulaWithLoki extends Node {
     this.db = new Loki(this.dbname)
     /** @private */
     this.statements = this.db.addCollection('statements')
-    this.statements.ensureIndex('subject')
-    this.statements.ensureIndex('predicate')
-    this.statements.ensureIndex('object')
     if (statements) { this.addAll(statements) }
     this.constraints = constraints
     this.initBindings = initBindings

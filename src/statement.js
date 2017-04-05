@@ -1,6 +1,7 @@
 'use strict'
 const Node = require('./node')
 const DefaultGraph = require('./default-graph')
+const NamedNode = require('./named-node')
 
 class Statement {
   constructor (subject, predicate, object, graph) {
@@ -8,6 +9,9 @@ class Statement {
     this.predicate = Node.fromValue(predicate)
     this.object = Node.fromValue(object)
     this.why = graph || new DefaultGraph()  // property currently used by rdflib
+    if (!(this.subject && this.predicate && this.object)) {
+      console.log('warning: incomplete statement: ' + this.toNT)
+    }
   }
   get graph () {
     return this.why
@@ -48,4 +52,9 @@ class Statement {
   }
 }
 
+
+Statement.deserialize = function ({subject, predicate, object, why}) {
+  // console.log('Statement.deserializing ' +  subject + ' ' + predicate + ' ' + object + ' ' + why)
+  return new Statement(NamedNode.deserialize(subject), NamedNode.deserialize(predicate), Node.deserialize(object), NamedNode.deserialize(why))
+}
 module.exports = Statement
